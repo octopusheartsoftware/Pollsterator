@@ -135,6 +135,11 @@
   /* ====================================================================== */
 
   var TABLE = "poll";
+
+  // A pasted URL often carries a trailing slash, which turns every request
+  // into a 404. Strip it, along with anything after the host.
+  SUPABASE_URL = String(SUPABASE_URL).trim().replace(/\/+$/,"").replace(/\/rest.*$/,"");
+  SUPABASE_KEY = String(SUPABASE_KEY).trim();
   var PARTIES = [
     {key:"dem", label:"Democrat",   cls:"dem"},
     {key:"rep", label:"Republican", cls:"rep"}
@@ -213,7 +218,10 @@
       if(view==="mine") renderNav(); else render();
     }).catch(function(e){
       ready=true;
-      flash("Couldn't reach the database ("+e.message+"). Check the settings at the top of the file.", true);
+      var hint = /HTTP 404/.test(e.message)
+        ? "The address works but the 'poll' table isn't there. Either the setup SQL was run in a different Supabase project than this key belongs to, or the table needs its schema cache reloaded."
+        : "Check the settings at the top of the file.";
+      flash("Couldn't reach the database ("+e.message+"). "+hint, true);
       render();
     });
   }
