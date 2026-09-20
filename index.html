@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Presidential Pollsterator</title>
+<style>
+  :root{
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    --bg:#f6f7f9; --surface:#ffffff; --surface-2:#f0f2f5; --text:#14171c;
+    --muted:#666e7a; --border:#d9dde3; --dem:#2563cf; --dem-soft:#e8f0fd;
+    --rep:#c0392f; --rep-soft:#fdeceb; --accent:#3d3f45; --danger:#c0392f;
+    --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 14px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#131519; --surface:#1c1f25; --surface-2:#23272e; --text:#e9ecf1;
+      --muted:#98a1ae; --border:#333942; --dem:#6fa4f5; --dem-soft:#1c2a41;
+      --rep:#f08a80; --rep-soft:#3a2220; --accent:#c9cfd8; --danger:#f08a80;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#131519; --surface:#1c1f25; --surface-2:#23272e; --text:#e9ecf1;
+    --muted:#98a1ae; --border:#333942; --dem:#6fa4f5; --dem-soft:#1c2a41;
+    --rep:#f08a80; --rep-soft:#3a2220; --accent:#c9cfd8; --danger:#f08a80;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35);
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:18px 16px 56px}
+  header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .brand{font-size:19px;font-weight:650;letter-spacing:-.01em;margin:0}
+  .brand small{display:block;font-size:12px;font-weight:450;color:var(--muted);letter-spacing:.02em;text-transform:uppercase}
+  .navbtns{display:flex;gap:8px;flex-wrap:wrap}
+  button{font:inherit;color:inherit;cursor:pointer}
+  .btn{background:var(--surface);border:1px solid var(--border);border-radius:9px;
+    padding:8px 14px;font-size:14px;font-weight:550;box-shadow:var(--shadow)}
+  .btn:hover{background:var(--surface-2)}
+  .btn.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+  .btn.primary:hover{opacity:.88;background:var(--accent)}
+  .btn.on{background:var(--surface-2);border-color:var(--muted)}
+  .btn.wide{display:block;width:100%;text-align:center;padding:14px;font-size:16px;margin-top:22px}
+  .btn.danger{color:var(--danger);border-color:var(--danger)}
+  .btn.danger:hover{background:var(--danger);color:var(--surface)}
+  .btn.sm{padding:4px 9px;font-size:12px;box-shadow:none}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:680px){.cols{grid-template-columns:1fr}}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:var(--shadow)}
+  .phead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 10px}
+  .ptitle{font-size:13px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin:0}
+  .dem .ptitle{color:var(--dem)} .rep .ptitle{color:var(--rep)}
+  .pcount{font-size:12px;color:var(--muted)}
+  ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+  .row{display:flex;align-items:center;gap:10px;background:var(--surface-2);
+    border:1px solid transparent;border-radius:10px;padding:9px 11px;min-height:46px}
+  .dem .row{background:var(--dem-soft)} .rep .row{background:var(--rep-soft)}
+  .rank{flex:0 0 26px;text-align:center;font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;color:var(--muted)}
+  .dem .rank{color:var(--dem)} .rep .rank{color:var(--rep)}
+  .nm{flex:1 1 auto;font-weight:550;font-size:15px;min-width:0;overflow-wrap:anywhere}
+  .score{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;flex:0 0 auto}
+  .handle{flex:0 0 auto;touch-action:none;cursor:grab;color:var(--muted);
+    padding:6px 4px;border:0;background:none;line-height:1;font-size:17px}
+  .handle:active{cursor:grabbing}
+  .arrows{display:flex;flex-direction:column;gap:2px;flex:0 0 auto}
+  .arrows button{border:1px solid var(--border);background:var(--surface);border-radius:6px;
+    width:28px;height:19px;font-size:10px;line-height:1;padding:0;color:var(--muted)}
+  .arrows button:disabled{opacity:.3;cursor:default}
+  .row.dragging{opacity:.9;box-shadow:0 8px 22px rgba(0,0,0,.22);border-color:var(--muted);pointer-events:none}
+  .xbtn{flex:0 0 auto;border:1px solid var(--border);background:var(--surface);border-radius:7px;
+    width:30px;height:30px;font-size:13px;font-weight:700;color:var(--danger);padding:0;line-height:1}
+  .xbtn:hover{background:var(--danger);color:var(--surface);border-color:var(--danger)}
+  .addrow{display:flex;gap:8px;margin-top:10px}
+  input[type=text]{flex:1 1 auto;min-width:0;font:inherit;font-size:14px;padding:9px 11px;
+    border:1px dashed var(--border);border-radius:9px;background:var(--surface);color:var(--text)}
+  input[type=text]:focus{outline:2px solid var(--muted);outline-offset:-1px;border-style:solid}
+  .dropped{margin-top:22px}
+  .dropped .row{background:var(--surface-2);opacity:.9}
+  .dscore{font-weight:700;font-size:13px;color:var(--danger);font-variant-numeric:tabular-nums;flex:0 0 auto}
+  .note{font-size:13px;color:var(--muted);margin:10px 2px}
+  .empty{font-size:14px;color:var(--muted);padding:14px 4px;text-align:center}
+  h2.sec{font-size:15px;font-weight:650;margin:26px 0 10px}
+  .banner{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--muted);
+    border-radius:10px;padding:11px 13px;font-size:13.5px;color:var(--muted);margin-bottom:16px}
+  .banner.warn{border-left-color:var(--danger);color:var(--text)}
+  .hide{display:none!important}
+  .linkrow{display:flex;align-items:center;gap:8px;background:var(--surface-2);
+    border-radius:10px;padding:9px 11px;margin-bottom:6px;flex-wrap:wrap}
+  .linkrow code{font-size:11.5px;color:var(--muted);flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;
+    display:flex;align-items:center;justify-content:center;padding:24px}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    padding:22px;max-width:420px;width:100%;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+  .modal h3{margin:0 0 8px;font-size:17px}
+  .modal p{margin:0 0 18px;font-size:14px;color:var(--muted)}
+  .modal .acts{display:flex;gap:10px;justify-content:flex-end}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="brand">Presidential Pollsterator<small id="whoami">Loading…</small></h1>
+    <nav class="navbtns" id="nav"></nav>
+  </header>
+  <div id="banner" class="banner hide"></div>
+  <main id="app"><div class="empty">Loading…</div></main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ======================================================================
+     SETTINGS — fill in these three lines, then save the file.
+
+     SUPABASE_KEY is the PUBLISHABLE key (starts with sb_publishable_).
+     An older anon key starting with eyJ also works. Never put a secret
+     key here — this file is public.
+     ====================================================================== */
+
+  var SUPABASE_URL = "https://aneaqsnlwyetcsmdqblh.supabase.co/rest/v1/";
+  var SUPABASE_KEY = "sb_publishable_oDqVuyA1o2LLC59HQjMlgQ_m0q-19FV";
+  var ADMIN_CODE   = "letmein";
+
+  /* ====================================================================== */
+
+  var TABLE = "poll";
+  var PARTIES = [
+    {key:"dem", label:"Democrat",   cls:"dem"},
+    {key:"rep", label:"Republican", cls:"rep"}
+  ];
+
+  var candidates=[], ballots={}, roster={}, resetAt=0;
+  var myId=null, myName="", isAdmin=false;
+  var view="home", myOrder=null, saveTimer=null, ready=false, configured=true;
+
+  var appEl=document.getElementById("app"),
+      navEl=document.getElementById("nav"),
+      whoEl=document.getElementById("whoami"),
+      bannerEl=document.getElementById("banner");
+
+  // ---- tiny storage layer over Supabase ------------------------------------
+  function headers(){
+    var h = { "apikey": SUPABASE_KEY, "Content-Type": "application/json" };
+    // New-style publishable keys go on the apikey header only — they aren't
+    // JWTs, so anything trying to verify them as one fails. Legacy anon keys
+    // (they start with eyJ) still want the Bearer header too.
+    if(SUPABASE_KEY.indexOf("eyJ")===0) h["Authorization"]="Bearer "+SUPABASE_KEY;
+    return h;
+  }
+  function loadAll(){
+    return fetch(SUPABASE_URL+"/rest/v1/"+TABLE+"?select=key,value", {headers:headers()})
+      .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); });
+  }
+  function put(key, value){
+    return fetch(SUPABASE_URL+"/rest/v1/"+TABLE, {
+      method:"POST",
+      headers:Object.assign(headers(),{"Prefer":"resolution=merge-duplicates,return=minimal"}),
+      body:JSON.stringify({key:key, value:value, updated_at:new Date().toISOString()})
+    }).then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); });
+  }
+  function del(key){
+    return fetch(SUPABASE_URL+"/rest/v1/"+TABLE+"?key=eq."+encodeURIComponent(key), {
+      method:"DELETE", headers:headers()
+    }).then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); });
+  }
+
+  function refresh(){
+    if(!configured) return Promise.resolve();
+    return loadAll().then(function(rows){
+      var nextC=[], nextB={}, nextR={}, nextReset=0;
+      rows.forEach(function(row){
+        var v=row.value||{};
+        if(row.key==="config"){
+          nextC=(Array.isArray(v.list)?v.list:[]).map(function(c){
+            return {id:c.id,name:c.name,party:c.party,active:!!c.active,
+              droppedRank:c.droppedRank==null?null:c.droppedRank,
+              droppedField:c.droppedField==null?null:c.droppedField,
+              droppedAt:c.droppedAt==null?null:c.droppedAt};
+          });
+          nextReset = typeof v.resetAt==="number" ? v.resetAt : 0;
+        } else if(row.key==="roster"){
+          (Array.isArray(v.people)?v.people:[]).forEach(function(p){ nextR[p.id]=p.name; });
+        } else if(row.key.indexOf("ballot:")===0){
+          nextB[row.key.slice(7)]=v;
+        }
+      });
+      candidates=nextC; ballots=nextB; roster=nextR; resetAt=nextReset;
+      if(myId) myName = roster[myId] || myName;
+      ready=true;
+      bannerEl.classList.add("hide");
+      if(view==="mine") renderNav(); else render();
+    }).catch(function(e){
+      ready=true;
+      flash("Couldn't reach the database ("+e.message+"). Check the settings at the top of the file.", true);
+      render();
+    });
+  }
+
+  function flash(msg, warn){
+    bannerEl.textContent=msg;
+    bannerEl.className="banner"+(warn?" warn":"");
+  }
+
+  // ---- helpers -------------------------------------------------------------
+  function uid(){ return "c_"+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+  function personId(name){
+    var slug=name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,18) || "guest";
+    return slug+"-"+Math.random().toString(36).slice(2,6);
+  }
+  function byId(id){ for(var i=0;i<candidates.length;i++){ if(candidates[i].id===id) return candidates[i]; } return null; }
+  function activeOf(p){ return candidates.filter(function(c){ return c.active && c.party===p; }); }
+  function droppedList(){
+    return candidates.filter(function(c){ return !c.active; })
+      .sort(function(a,b){ return (b.droppedAt||0)-(a.droppedAt||0); });
+  }
+  function liveBallot(b){
+    if(!b) return null;
+    if(resetAt && !(b.updatedAt>=resetAt)) return null;
+    return b;
+  }
+
+  // ---- scoring -------------------------------------------------------------
+  function effectiveOrder(ballot, party){
+    var act=activeOf(party), live={}, out=[], seen={};
+    act.forEach(function(c){ live[c.id]=true; });
+    var stored=(ballot && Array.isArray(ballot[party]))?ballot[party]:[];
+    stored.forEach(function(id){ if(live[id] && !seen[id]){ seen[id]=true; out.push(id); } });
+    act.forEach(function(c){ if(!seen[c.id]){ seen[c.id]=true; out.push(c.id); } });
+    return out;
+  }
+  function scoresFor(party){
+    var act=activeOf(party), N=act.length, total={}, count={};
+    act.forEach(function(c){ total[c.id]=0; count[c.id]=0; });
+    Object.keys(ballots).forEach(function(u){
+      var b=liveBallot(ballots[u]);
+      if(!b || !Array.isArray(b[party]) || !b[party].length) return;
+      effectiveOrder(b,party).forEach(function(id,i){
+        if(total[id]!==undefined){ total[id]+=(N-i); count[id]++; }
+      });
+    });
+    return act.map(function(c){
+      return {c:c, avg:count[c.id]?total[c.id]/count[c.id]:null, voters:count[c.id]};
+    }).sort(function(a,b){
+      var av=a.avg===null?-1:a.avg, bv=b.avg===null?-1:b.avg;
+      if(bv!==av) return bv-av;
+      return a.c.name.localeCompare(b.c.name);
+    });
+  }
+  function voterCount(party){
+    var n=0;
+    Object.keys(ballots).forEach(function(u){
+      var b=liveBallot(ballots[u]);
+      if(b && Array.isArray(b[party]) && b[party].length) n++;
+    });
+    return n;
+  }
+
+  // ---- writes --------------------------------------------------------------
+  function saveConfig(){
+    return put("config",{list:candidates,resetAt:resetAt,updatedAt:Date.now()})
+      .catch(function(){ flash("That change didn't save. Check your connection and try again.",true); });
+  }
+  function saveRoster(){
+    var people=Object.keys(roster).map(function(id){ return {id:id,name:roster[id]}; });
+    return put("roster",{people:people})
+      .catch(function(){ flash("Couldn't save the people list.",true); });
+  }
+  function queueBallotSave(){
+    if(!myId||!myOrder) return;
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(function(){
+      put("ballot:"+myId,{dem:myOrder.dem.slice(),rep:myOrder.rep.slice(),updatedAt:Date.now()})
+        .catch(function(){ flash("Your rankings didn't save. They'll retry when you make another change.",true); });
+    },600);
+  }
+
+  // ---- drag to reorder -----------------------------------------------------
+  function makeSortable(listEl,onDrop){
+    listEl.addEventListener("pointerdown",function(e){
+      var handle=e.target.closest("[data-handle]"); if(!handle) return;
+      var row=handle.closest(".row"); if(!row) return;
+      e.preventDefault();
+      var dragging=row; row.classList.add("dragging");
+      try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+      function move(ev){
+        if(!dragging) return;
+        var under=document.elementFromPoint(ev.clientX,ev.clientY);
+        var target=under&&under.closest?under.closest(".row"):null;
+        if(!target||target===dragging||target.parentNode!==listEl) return;
+        var rect=target.getBoundingClientRect();
+        listEl.insertBefore(dragging, ev.clientY>rect.top+rect.height/2 ? target.nextSibling : target);
+      }
+      function up(){
+        if(!dragging) return;
+        dragging.classList.remove("dragging"); dragging=null;
+        handle.removeEventListener("pointermove",move);
+        handle.removeEventListener("pointerup",up);
+        handle.removeEventListener("pointercancel",up);
+        onDrop([].slice.call(listEl.querySelectorAll(".row")).map(function(r){ return r.dataset.id; }));
+      }
+      handle.addEventListener("pointermove",move);
+      handle.addEventListener("pointerup",up);
+      handle.addEventListener("pointercancel",up);
+    });
+  }
+
+  // ---- rendering -----------------------------------------------------------
+  function el(tag,cls,text){
+    var n=document.createElement(tag);
+    if(cls) n.className=cls;
+    if(text!==undefined&&text!==null) n.textContent=text;
+    return n;
+  }
+  function renderNav(){
+    navEl.innerHTML="";
+    var items=[["home","Rankings"]];
+    if(myId) items.push(["mine","My Rankings"]);
+    if(isAdmin) items.push(["admin","Dashboard"]);
+    items.forEach(function(it){
+      var b=el("button","btn"+(view===it[0]?" on":""),it[1]);
+      b.onclick=function(){ go(it[0]); };
+      navEl.appendChild(b);
+    });
+  }
+
+  function renderHome(){
+    appEl.innerHTML="";
+    if(!activeOf("dem").length&&!activeOf("rep").length){
+      appEl.appendChild(el("div","empty",isAdmin
+        ? "No candidates yet. Open the Dashboard to add them."
+        : "No candidates have been added yet. Check back soon."));
+      return;
+    }
+    var cols=el("div","cols");
+    PARTIES.forEach(function(p){
+      var panel=el("section","panel "+p.cls);
+      var head=el("div","phead");
+      head.appendChild(el("h2","ptitle",p.label));
+      var n=voterCount(p.key);
+      head.appendChild(el("span","pcount",n===1?"1 ranking":n+" rankings"));
+      panel.appendChild(head);
+      var rows=scoresFor(p.key);
+      if(!rows.length) panel.appendChild(el("div","empty","None running."));
+      var ul=el("ul","list");
+      rows.forEach(function(r,i){
+        var li=el("li","row");
+        li.appendChild(el("span","rank",String(i+1)));
+        li.appendChild(el("span","nm",r.c.name));
+        li.appendChild(el("span","score",r.avg===null?"—":r.avg.toFixed(1)));
+        ul.appendChild(li);
+      });
+      panel.appendChild(ul);
+      cols.appendChild(panel);
+    });
+    appEl.appendChild(cols);
+
+    if(myId){
+      var b=el("button","btn primary wide","Change My Rankings");
+      b.onclick=function(){ go("mine"); };
+      appEl.appendChild(b);
+    }else{
+      appEl.appendChild(el("p","note","To add your own rankings you need your personal link. Ask Michael to send it to you."));
+    }
+    appEl.appendChild(el("p","note","Scores are the average points a candidate gets across everyone's ballots. Your top pick is worth one point per candidate still running in that party."));
+  }
+
+  function renderMine(){
+    appEl.innerHTML="";
+    if(!myOrder){
+      var mine=liveBallot(ballots[myId]);
+      myOrder={dem:effectiveOrder(mine,"dem"),rep:effectiveOrder(mine,"rep")};
+      if(!mine&&(myOrder.dem.length||myOrder.rep.length)) queueBallotSave();
+    }
+    if(!activeOf("dem").length&&!activeOf("rep").length){
+      appEl.appendChild(el("div","empty","No candidates to rank yet."));
+      return;
+    }
+    appEl.appendChild(el("p","note","Drag a row by its handle, or use the arrows, to move a candidate up or down. Changes save on their own."));
+    var cols=el("div","cols");
+    PARTIES.forEach(function(p){
+      var panel=el("section","panel "+p.cls);
+      var head=el("div","phead");
+      head.appendChild(el("h2","ptitle",p.label));
+      head.appendChild(el("span","pcount",myOrder[p.key].length+" running"));
+      panel.appendChild(head);
+      var ul=el("ul","list"); ul.dataset.party=p.key;
+      myOrder[p.key].forEach(function(id,i){
+        var c=byId(id); if(!c) return;
+        var li=el("li","row"); li.dataset.id=id;
+        li.appendChild(el("span","rank",String(i+1)));
+        li.appendChild(el("span","nm",c.name));
+        var ar=el("div","arrows");
+        var up=el("button",null,"▲"); up.title="Move up"; up.disabled=i===0;
+        up.onclick=function(){ swap(p.key,i,i-1); };
+        var dn=el("button",null,"▼"); dn.title="Move down"; dn.disabled=i===myOrder[p.key].length-1;
+        dn.onclick=function(){ swap(p.key,i,i+1); };
+        ar.appendChild(up); ar.appendChild(dn); li.appendChild(ar);
+        var h=el("button","handle","⠿"); h.setAttribute("data-handle",""); h.title="Drag to reorder";
+        li.appendChild(h);
+        ul.appendChild(li);
+      });
+      panel.appendChild(ul);
+      makeSortable(ul,function(ids){ myOrder[p.key]=ids; queueBallotSave(); renderMine(); });
+      cols.appendChild(panel);
+    });
+    appEl.appendChild(cols);
+    var b=el("button","btn wide","Back to Rankings");
+    b.onclick=function(){ go("home"); };
+    appEl.appendChild(b);
+  }
+
+  function swap(party,a,b){
+    var arr=myOrder[party];
+    if(b<0||b>=arr.length) return;
+    var t=arr[a]; arr[a]=arr[b]; arr[b]=t;
+    queueBallotSave(); renderMine();
+  }
+
+  function renderAdmin(){
+    appEl.innerHTML="";
+    appEl.appendChild(el("p","note","Add candidates as they enter the race. Click ✕ when someone drops out — their standing at that moment is recorded below."));
+
+    var cols=el("div","cols");
+    PARTIES.forEach(function(p){
+      var panel=el("section","panel "+p.cls);
+      var head=el("div","phead");
+      head.appendChild(el("h2","ptitle",p.label));
+      var act=activeOf(p.key);
+      head.appendChild(el("span","pcount",act.length+" running"));
+      panel.appendChild(head);
+      var ul=el("ul","list");
+      scoresFor(p.key).forEach(function(r,i){
+        var li=el("li","row"); li.dataset.id=r.c.id;
+        li.appendChild(el("span","rank",String(i+1)));
+        li.appendChild(el("span","nm",r.c.name));
+        var x=el("button","xbtn","✕"); x.title="Mark as dropped out";
+        x.onclick=function(){ dropCandidate(r.c.id); };
+        li.appendChild(x);
+        ul.appendChild(li);
+      });
+      if(!act.length) ul.appendChild(el("li","empty","None yet."));
+      panel.appendChild(ul);
+      var add=el("div","addrow");
+      var inp=document.createElement("input");
+      inp.type="text"; inp.placeholder="Add a candidate…";
+      var go2=el("button","btn","Add");
+      function doAdd(){
+        var v=inp.value.trim(); if(!v) return;
+        candidates.push({id:uid(),name:v,party:p.key,active:true,droppedRank:null,droppedField:null,droppedAt:null});
+        inp.value="";
+        saveConfig().then(refresh);
+        render();
+      }
+      go2.onclick=doAdd;
+      inp.onkeydown=function(e){ if(e.key==="Enter") doAdd(); };
+      add.appendChild(inp); add.appendChild(go2);
+      panel.appendChild(add);
+      cols.appendChild(panel);
+    });
+    appEl.appendChild(cols);
+
+    // dropped out
+    var out=droppedList();
+    var sec=el("section","dropped");
+    sec.appendChild(el("h2","sec","Dropped Out"));
+    if(!out.length){
+      sec.appendChild(el("div","empty","Nobody has dropped out yet."));
+    }else{
+      var cols2=el("div","cols");
+      PARTIES.forEach(function(p){
+        var mine=out.filter(function(c){ return c.party===p.key; });
+        var panel=el("section","panel "+p.cls);
+        panel.appendChild(el("h3","ptitle",p.label));
+        var ul=el("ul","list");
+        if(!mine.length) ul.appendChild(el("li","empty","None."));
+        mine.forEach(function(c){
+          var li=el("li","row");
+          li.appendChild(el("span","nm",c.name));
+          li.appendChild(el("span","dscore",(c.droppedRank||"?")+"/"+(c.droppedField||"?")));
+          var back=el("button","btn sm","Undo"); back.title="Put back in the race";
+          back.onclick=function(){ restore(c.id); };
+          li.appendChild(back);
+          ul.appendChild(li);
+        });
+        panel.appendChild(ul);
+        cols2.appendChild(panel);
+      });
+      sec.appendChild(cols2);
+      sec.appendChild(el("p","note","The red figure is where that candidate stood in the group ranking on the day they dropped — 5/7 means fifth of the seven still running."));
+    }
+    appEl.appendChild(sec);
+
+    // people + links
+    var who=el("section");
+    who.appendChild(el("h2","sec","People"));
+    who.appendChild(el("p","note","Add someone, then send them their personal link. Opening it is all they need to do — no sign-up, no password. The link remembers them on that device."));
+    var ids=Object.keys(roster);
+    if(!ids.length) who.appendChild(el("div","empty","Nobody added yet."));
+    ids.forEach(function(id){
+      var url=baseUrl()+"?u="+encodeURIComponent(id);
+      var r=el("div","linkrow");
+      var nm=el("span","nm",roster[id]);
+      var done=liveBallot(ballots[id]);
+      if(done) nm.textContent = roster[id]+" ✓";
+      r.appendChild(nm);
+      r.appendChild(el("code",null,url));
+      var cp=el("button","btn sm","Copy link");
+      cp.onclick=function(){
+        navigator.clipboard.writeText(url).then(function(){
+          cp.textContent="Copied";
+          setTimeout(function(){ cp.textContent="Copy link"; },1400);
+        }).catch(function(){ window.prompt("Copy this link:",url); });
+      };
+      r.appendChild(cp);
+      var rm=el("button","btn sm","Remove");
+      rm.onclick=function(){
+        confirmDialog("Remove "+roster[id]+"?","Their link stops working and their rankings are deleted.","Yes, remove",function(){
+          delete roster[id];
+          saveRoster().then(function(){ return del("ballot:"+id).catch(function(){}); }).then(refresh);
+          render();
+        });
+      };
+      r.appendChild(rm);
+      who.appendChild(r);
+    });
+    var addP=el("div","addrow");
+    var pin=document.createElement("input");
+    pin.type="text"; pin.placeholder="Add a person's name…";
+    var pbtn=el("button","btn","Add person");
+    function addPerson(){
+      var v=pin.value.trim(); if(!v) return;
+      roster[personId(v)]=v;
+      pin.value="";
+      saveRoster().then(refresh);
+      render();
+    }
+    pbtn.onclick=addPerson;
+    pin.onkeydown=function(e){ if(e.key==="Enter") addPerson(); };
+    addP.appendChild(pin); addP.appendChild(pbtn);
+    who.appendChild(addP);
+    appEl.appendChild(who);
+
+    // reset
+    var danger=el("section");
+    danger.appendChild(el("h2","sec","Start over"));
+    var clr=el("button","btn danger wide","Clear all data");
+    clr.onclick=function(){
+      confirmDialog("Clear all data?",
+        "This removes every candidate and every ranking from everyone. People and their links are kept. It cannot be undone.",
+        "Yes, clear everything", clearAll);
+    };
+    danger.appendChild(clr);
+    appEl.appendChild(danger);
+  }
+
+  function baseUrl(){ return location.origin+location.pathname; }
+
+  function dropCandidate(id){
+    var c=byId(id); if(!c) return;
+    var rows=scoresFor(c.party), idx=-1;
+    for(var i=0;i<rows.length;i++){ if(rows[i].c.id===id){ idx=i; break; } }
+    c.active=false;
+    c.droppedRank=idx>=0?idx+1:null;
+    c.droppedField=rows.length;
+    c.droppedAt=Date.now();
+    saveConfig().then(refresh);
+    render();
+  }
+  function restore(id){
+    var c=byId(id); if(!c) return;
+    c.active=true; c.droppedRank=null; c.droppedField=null; c.droppedAt=null;
+    saveConfig().then(refresh);
+    render();
+  }
+  function clearAll(){
+    resetAt=Date.now()+1;
+    candidates=[];
+    myOrder=null;
+    var ids=Object.keys(ballots);
+    saveConfig().then(function(){
+      return Promise.all(ids.map(function(u){ return del("ballot:"+u).catch(function(){}); }));
+    }).then(refresh);
+    render();
+  }
+
+  function confirmDialog(title,body,yesLabel,onYes){
+    var scrim=el("div","scrim"), box=el("div","modal");
+    box.appendChild(el("h3",null,title));
+    box.appendChild(el("p",null,body));
+    var acts=el("div","acts");
+    var no=el("button","btn","No, cancel");
+    var yes=el("button","btn danger",yesLabel);
+    function close(){ if(scrim.parentNode) document.body.removeChild(scrim); document.removeEventListener("keydown",esc); }
+    function esc(e){ if(e.key==="Escape") close(); }
+    no.onclick=close;
+    yes.onclick=function(){ close(); onYes(); };
+    scrim.onclick=function(e){ if(e.target===scrim) close(); };
+    document.addEventListener("keydown",esc);
+    acts.appendChild(no); acts.appendChild(yes);
+    box.appendChild(acts); scrim.appendChild(box);
+    document.body.appendChild(scrim);
+    yes.focus();
+  }
+
+  function go(v){ view=v; if(v!=="mine") myOrder=null; render(); }
+  function render(){
+    renderNav();
+    if(!ready){ appEl.innerHTML='<div class="empty">Loading…</div>'; return; }
+    if(view==="admin"&&!isAdmin) view="home";
+    if(view==="mine"&&!myId) view="home";
+    if(view==="home") renderHome();
+    else if(view==="mine") renderMine();
+    else renderAdmin();
+  }
+
+  // ---- boot ----------------------------------------------------------------
+  var params=new URLSearchParams(location.search);
+
+  if(params.get("u")){
+    myId=params.get("u");
+    try{ localStorage.setItem("pp_uid",myId); }catch(e){}
+  }else{
+    try{ myId=localStorage.getItem("pp_uid"); }catch(e){}
+  }
+  if(params.get("admin")===ADMIN_CODE && ADMIN_CODE){
+    isAdmin=true;
+    try{ localStorage.setItem("pp_admin",ADMIN_CODE); }catch(e){}
+  }else{
+    try{ isAdmin = localStorage.getItem("pp_admin")===ADMIN_CODE; }catch(e){}
+  }
+  if(params.get("u")||params.get("admin")){
+    history.replaceState(null,"",baseUrl());
+  }
+  whoEl.textContent = isAdmin ? "Admin" : (myId ? "Signed in" : "Viewing");
+
+  if(SUPABASE_URL.indexOf("YOUR-PROJECT")>=0 || SUPABASE_KEY.indexOf("PASTE-")>=0){
+    configured=false; ready=true;
+    flash("Not set up yet: open this file and fill in SUPABASE_URL, SUPABASE_KEY and ADMIN_CODE near the top of the script.",true);
+  }
+
+  render();
+  refresh().then(function(){
+    if(myId&&roster[myId]) whoEl.textContent=roster[myId];
+  });
+
+  setInterval(function(){
+    if(document.visibilityState==="visible" && view!=="mine") refresh();
+  },6000);
+  document.addEventListener("visibilitychange",function(){
+    if(document.visibilityState==="visible") refresh();
+  });
+})();
+</script>
+</body>
+</html>
