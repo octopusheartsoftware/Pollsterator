@@ -89,6 +89,11 @@
     border-radius:10px;padding:11px 13px;font-size:13.5px;color:var(--muted);margin-bottom:16px}
   .banner.warn{border-left-color:var(--danger);color:var(--text)}
   .hide{display:none!important}
+  .diag{
+    background:var(--surface-2);border:1px solid var(--border);border-radius:10px;
+    padding:12px;margin-top:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text);
+  }
   .linkrow{display:flex;align-items:center;gap:8px;background:var(--surface-2);
     border-radius:10px;padding:9px 11px;margin-bottom:6px;flex-wrap:wrap}
   .linkrow code{font-size:11.5px;color:var(--muted);flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
@@ -123,9 +128,9 @@
      key here — this file is public.
      ====================================================================== */
 
-  var SUPABASE_URL = "https://aneaqsnlwyetcsmdqblh.supabase.co/rest/v1/";
-  var SUPABASE_KEY = "sb_publishable_oDqVuyA1o2LLC59HQjMlgQ_m0q-19FV";
-  var ADMIN_CODE   = "letmein";
+  var SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+  var SUPABASE_KEY = "PASTE-YOUR-PUBLISHABLE-KEY-HERE";
+  var ADMIN_CODE   = "pick-something-random-abc123";
 
   /* ====================================================================== */
 
@@ -138,6 +143,7 @@
   var candidates=[], ballots={}, roster={}, resetAt=0;
   var myId=null, myName="", isAdmin=false;
   var view="home", myOrder=null, saveTimer=null, ready=false, configured=true;
+  var configStamp=0, rosterStamp=0, stamps={config:0,roster:0}, stickyError=false;
 
   var appEl=document.getElementById("app"),
       navEl=document.getElementById("nav"),
@@ -153,21 +159,26 @@
     if(SUPABASE_KEY.indexOf("eyJ")===0) h["Authorization"]="Bearer "+SUPABASE_KEY;
     return h;
   }
+  function fail(r){
+    return r.text().then(function(t){
+      throw new Error("HTTP "+r.status+(t?" — "+t.slice(0,180):""));
+    });
+  }
   function loadAll(){
     return fetch(SUPABASE_URL+"/rest/v1/"+TABLE+"?select=key,value", {headers:headers()})
-      .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); });
+      .then(function(r){ if(!r.ok) return fail(r); return r.json(); });
   }
   function put(key, value){
     return fetch(SUPABASE_URL+"/rest/v1/"+TABLE, {
       method:"POST",
       headers:Object.assign(headers(),{"Prefer":"resolution=merge-duplicates,return=minimal"}),
       body:JSON.stringify({key:key, value:value, updated_at:new Date().toISOString()})
-    }).then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); });
+    }).then(function(r){ if(!r.ok) return fail(r); });
   }
   function del(key){
     return fetch(SUPABASE_URL+"/rest/v1/"+TABLE+"?key=eq."+encodeURIComponent(key), {
       method:"DELETE", headers:headers()
-    }).then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); });
+    }).then(function(r){ if(!r.ok) return fail(r); });
   }
 
   function refresh(){
@@ -184,16 +195,21 @@
               droppedAt:c.droppedAt==null?null:c.droppedAt};
           });
           nextReset = typeof v.resetAt==="number" ? v.resetAt : 0;
+          stamps.config = typeof v.updatedAt==="number" ? v.updatedAt : 0;
         } else if(row.key==="roster"){
+          stamps.roster = typeof v.updatedAt==="number" ? v.updatedAt : 0;
           (Array.isArray(v.people)?v.people:[]).forEach(function(p){ nextR[p.id]=p.name; });
         } else if(row.key.indexOf("ballot:")===0){
           nextB[row.key.slice(7)]=v;
         }
       });
-      candidates=nextC; ballots=nextB; roster=nextR; resetAt=nextReset;
+      candidates = keepLocalConfig(nextC, nextReset) ? candidates : nextC;
+      ballots=nextB;
+      roster = keepLocalRoster(nextR) ? roster : nextR;
+      resetAt=nextReset;
       if(myId) myName = roster[myId] || myName;
       ready=true;
-      bannerEl.classList.add("hide");
+      if(!stickyError) bannerEl.classList.add("hide");
       if(view==="mine") renderNav(); else render();
     }).catch(function(e){
       ready=true;
@@ -202,9 +218,19 @@
     });
   }
 
+  // A read that arrives while a local change is still unsaved must not wipe it.
+  function keepLocalConfig(incoming, incomingReset){
+    return configStamp > 0 && incomingUpdatedAt("config") < configStamp;
+  }
+  function keepLocalRoster(){
+    return rosterStamp > 0 && incomingUpdatedAt("roster") < rosterStamp;
+  }
+  function incomingUpdatedAt(which){ return stamps[which]||0; }
+
   function flash(msg, warn){
     bannerEl.textContent=msg;
     bannerEl.className="banner"+(warn?" warn":"");
+    stickyError = !!warn;
   }
 
   // ---- helpers -------------------------------------------------------------
@@ -263,20 +289,24 @@
 
   // ---- writes --------------------------------------------------------------
   function saveConfig(){
-    return put("config",{list:candidates,resetAt:resetAt,updatedAt:Date.now()})
-      .catch(function(){ flash("That change didn't save. Check your connection and try again.",true); });
+    configStamp = Date.now();
+    return put("config",{list:candidates,resetAt:resetAt,updatedAt:configStamp})
+      .then(function(){ configStamp=0; })
+      .catch(function(e){ flash("Candidates didn't save — "+e.message, true); });
   }
   function saveRoster(){
+    rosterStamp = Date.now();
     var people=Object.keys(roster).map(function(id){ return {id:id,name:roster[id]}; });
-    return put("roster",{people:people})
-      .catch(function(){ flash("Couldn't save the people list.",true); });
+    return put("roster",{people:people,updatedAt:rosterStamp})
+      .then(function(){ rosterStamp=0; })
+      .catch(function(e){ flash("People list didn't save — "+e.message, true); });
   }
   function queueBallotSave(){
     if(!myId||!myOrder) return;
     clearTimeout(saveTimer);
     saveTimer=setTimeout(function(){
       put("ballot:"+myId,{dem:myOrder.dem.slice(),rep:myOrder.rep.slice(),updatedAt:Date.now()})
-        .catch(function(){ flash("Your rankings didn't save. They'll retry when you make another change.",true); });
+        .catch(function(e){ flash("Your rankings didn't save — "+e.message, true); });
     },600);
   }
 
@@ -448,7 +478,7 @@
       panel.appendChild(ul);
       var add=el("div","addrow");
       var inp=document.createElement("input");
-      inp.type="text"; inp.placeholder="Add a candidate…";
+      inp.type="text"; inp.placeholder="Add a candidate…"; inp.id="add-"+p.key;
       var go2=el("button","btn","Add");
       function doAdd(){
         var v=inp.value.trim(); if(!v) return;
@@ -531,7 +561,7 @@
     });
     var addP=el("div","addrow");
     var pin=document.createElement("input");
-    pin.type="text"; pin.placeholder="Add a person's name…";
+    pin.type="text"; pin.placeholder="Add a person's name…"; pin.id="add-person";
     var pbtn=el("button","btn","Add person");
     function addPerson(){
       var v=pin.value.trim(); if(!v) return;
@@ -546,6 +576,17 @@
     who.appendChild(addP);
     appEl.appendChild(who);
 
+    // connection test
+    var diag=el("section");
+    diag.appendChild(el("h2","sec","Connection test"));
+    diag.appendChild(el("p","note","Checks whether this page can actually read and write the database. Nothing here changes your candidates or rankings."));
+    var out=el("div","diag hide");
+    var run=el("button","btn","Run connection test");
+    run.onclick=function(){ out.classList.remove("hide"); runDiagnostics(out); };
+    diag.appendChild(run);
+    diag.appendChild(out);
+    appEl.appendChild(diag);
+
     // reset
     var danger=el("section");
     danger.appendChild(el("h2","sec","Start over"));
@@ -557,6 +598,40 @@
     };
     danger.appendChild(clr);
     appEl.appendChild(danger);
+  }
+
+  function runDiagnostics(box){
+    var lines=[];
+    function log(s){ lines.push(s); box.textContent=lines.join("\n"); }
+    function step(name, req){
+      return req.then(function(r){
+        return r.text().then(function(t){
+          log(name+" -> "+r.status+" "+(r.ok?"OK":"FAILED")+(t?"\n     "+t.slice(0,300):""));
+        });
+      }).catch(function(e){
+        log(name+" -> request never completed: "+e.message);
+      });
+    }
+    box.textContent="";
+    log("URL: "+SUPABASE_URL);
+    log("Key: "+SUPABASE_KEY.slice(0,24)+"... ("+SUPABASE_KEY.length+" chars)");
+    log("Sent as: apikey header"+(SUPABASE_KEY.indexOf("eyJ")===0?" + Authorization":"" ));
+    log("");
+    step("1. Read the table", fetch(SUPABASE_URL+"/rest/v1/"+TABLE+"?select=key&limit=1",{headers:headers()}))
+    .then(function(){
+      return step("2. Write a test row", fetch(SUPABASE_URL+"/rest/v1/"+TABLE,{
+        method:"POST",
+        headers:Object.assign(headers(),{"Prefer":"resolution=merge-duplicates,return=representation"}),
+        body:JSON.stringify({key:"__test",value:{ok:true},updated_at:new Date().toISOString()})
+      }));
+    })
+    .then(function(){
+      return step("3. Read it back", fetch(SUPABASE_URL+"/rest/v1/"+TABLE+"?key=eq.__test&select=key,value",{headers:headers()}));
+    })
+    .then(function(){
+      return step("4. Delete the test row", fetch(SUPABASE_URL+"/rest/v1/"+TABLE+"?key=eq.__test",{method:"DELETE",headers:headers()}));
+    })
+    .then(function(){ log("\nFinished."); });
   }
 
   function baseUrl(){ return location.origin+location.pathname; }
@@ -610,6 +685,24 @@
 
   function go(v){ view=v; if(v!=="mine") myOrder=null; render(); }
   function render(){
+    // A redraw must not swallow whatever is being typed right now.
+    var a=document.activeElement;
+    var keepId = (a && a.tagName==="INPUT") ? a.id : null;
+    var keepVal = keepId ? a.value : null;
+    var keepPos = keepId ? a.selectionStart : null;
+
+    draw();
+
+    if(keepId){
+      var n=document.getElementById(keepId);
+      if(n){
+        n.value=keepVal;
+        n.focus();
+        try{ n.setSelectionRange(keepPos,keepPos); }catch(e){}
+      }
+    }
+  }
+  function draw(){
     renderNav();
     if(!ready){ appEl.innerHTML='<div class="empty">Loading…</div>'; return; }
     if(view==="admin"&&!isAdmin) view="home";
@@ -650,7 +743,11 @@
   });
 
   setInterval(function(){
-    if(document.visibilityState==="visible" && view!=="mine") refresh();
+    if(document.visibilityState!=="visible") return;
+    if(view==="mine") return;
+    var a=document.activeElement;
+    if(a && a.tagName==="INPUT") return;   // don't interrupt typing
+    refresh();
   },6000);
   document.addEventListener("visibilitychange",function(){
     if(document.visibilityState==="visible") refresh();
